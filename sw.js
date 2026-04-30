@@ -1,30 +1,42 @@
-
-const CACHE_NAME = "finance-tracker-v1";
+const CACHE_NAME = "finance-app-v2";
 
 const urlsToCache = [
   "./",
   "./index.html",
-  "./manifest.json"
+  "./style.css",
+  "./app.js"
 ];
 
 self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(urlsToCache);
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
+  );
+});
+
+self.addEventListener("activate", event => {
+  const cacheWhitelist = [CACHE_NAME];
+
+  event.waitUntil(
+    caches.keys().then(cacheNames =>
+      Promise.all(
+        cacheNames.map(cache => {
+          if (!cacheWhitelist.includes(cache)) {
+            return caches.delete(cache);
+          }
+        })
+      )
+    )
   );
 });
 
 self.addEventListener("fetch", event => {
   event.respondWith(
-    caches.match(event.request).then(response => {
-      return response || fetch(event.request);
-    })
+    caches.match(event.request)
+      .then(response =>
+        response || fetch(event.request).catch(() =>
+          caches.match("./index.html")
+        )
+      )
   );
 });
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js")
-    .then(() => console.log("Service Worker Registered"))
-    .catch(err => console.log(err));
-}
