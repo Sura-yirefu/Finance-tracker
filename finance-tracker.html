@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Finance Tracker Pro</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4f46e5">
+  
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: linear-gradient(135deg, #4f46e5, #9333ea);
+      color: white;
+    }
+
+    h1 {
+      text-align: center;
+      padding: 20px;
+      margin: 0;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      padding: 20px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.12);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      transition: 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 10px;
+      border: none;
+      outline: none;
+    }
+
+    button {
+      padding: 10px;
+      margin: 5px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      transform: scale(1.05);
+    }
+
+    #addBtn {
+      background: #22c55e;
+      color: white;
+      width: 100%;
+    }
+
+    .danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .success {
+      background: #10b981;
+      color: white;
+    }
+
+    .filter button {
+      background: rgba(255,255,255,0.2);
+      color: white;
+    }
+
+    li {
+      background: rgba(255,255,255,0.15);
+      padding: 8px;
+      margin: 6px 0;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    li button {
+      background: white;
+      color: #4f46e5;
+    }
+
+    #total {
+      font-size: 28px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>💰 Finance Tracker Pro</h1>
+
+<div class="container">
+
+  <!-- STREAK -->
+  <div class="card">
+    <h2 id="streak">0</h2>
+    <p>Day Streak</p>
+    <button class="success" onclick="addDay()">No Spend</button>
+    <button class="danger" onclick="resetStreak()">Spent</button>
+  </div>
+
+  <!-- ADD -->
+  <div class="card">
+    <h3>Add Expense</h3>
+    <input id="amount" placeholder="Amount">
+
+    <select id="category">
+      <option>Food</option>
+      <option>Transport</option>
+      <option>Shopping</option>
+      <option>Other</option>
+    </select>
+
+    <button id="addBtn" onclick="addExpense()">Add</button>
+  </div>
+
+  <!-- TOTAL -->
+  <div class="card">
+    <h3>Total Spent</h3>
+    <h2 id="total">0 birr</h2>
+  </div>
+
+  <!-- FILTER -->
+  <div class="card filter">
+    <h3>Filter</h3>
+    <button onclick="setFilter('all')">All</button>
+    <button onclick="setFilter('today')">Today</button>
+    <button onclick="setFilter('week')">Week</button>
+  </div>
+
+  <!-- BAR CHART -->
+  <div class="card">
+    <h3>Spending Trend</h3>
+    <canvas id="barChart"></canvas>
+  </div>
+
+  <!-- PIE CHART -->
+  <div class="card">
+    <h3>Categories</h3>
+    <canvas id="pieChart"></canvas>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="card">
+    <h3>History</h3>
+    <ul id="history"></ul>
+  </div>
+
+</div>
+
+<script>
+
+// ---------- STATE ----------
+let streak = parseInt(localStorage.getItem("streak")) || 0;
+let expenses = JSON.parse(localStorage.getItem("expenses")) || [];
+let currentFilter = "all";
+let editIndex = -1;
+
+let barChart, pieChart;
+
+document.getElementById("streak").innerText = streak;
+
+render();
+
+// ---------- STREAK ----------
+function addDay() {
+  streak++;
+  localStorage.setItem("streak", streak);
+  document.getElementById("streak").innerText = streak;
+}
+
+function resetStreak() {
+  streak = 0;
+  localStorage.setItem("streak", streak);
+  document.getElementById("streak").innerText = streak;
+}
+
+// ---------- ADD / EDIT ----------
+function addExpense() {
+  let amount = document.getElementById("amount").value;
+  let category = document.getElementById("category").value;
+
+  if (amount === "" || isNaN(amount)) return;
+
+  if (editIndex === -1) {
+    expenses.push({
+      amount: Number(amount),
+      category,
+      date: new Date().toISOString()
+    });
+  } else {
+    expenses[editIndex].amount = Number(amount);
+    expenses[editIndex].category = category;
+    editIndex = -1;
+    document.getElementById("addBtn").innerText = "Add";
+  }
+
+  localStorage.setItem("expenses", JSON.stringify(expenses));
+
+  document.getElementById("amount").value = "";
+  render();
+}
+
+// ---------- EDIT ----------
+function editExpense(index) {
+  document.getElementById("amount").value = expenses[index].amount;
+  document.getElementById("category").value = expenses[index].category;
+
+  editIndex = index;
+  document.getElementById("addBtn").innerText = "Update ✏️";
+}
+
+// ---------- DELETE ----------
+function deleteExpense(index) {
+  expenses.splice(index, 1);
+  localStorage.setItem("expenses", JSON.stringify(expenses));
+  render();
+}
+
+// ---------- FILTER ----------
+function setFilter(filter) {
+  currentFilter = filter;
+  render();
+}
+
+// ---------- CHARTS ----------
+function drawCharts(data) {
+
+  let byDate = {};
+  let byCategory = {};
+
+  data.forEach(e => {
+    let d = new Date(e.date).toLocaleDateString();
+    byDate[d] = (byDate[d] || 0) + e.amount;
+    byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+  });
+
+  // BAR
+  if (barChart) barChart.destroy();
+
+  barChart = new Chart(document.getElementById("barChart"), {
+    type: "bar",
+    data: {
+      labels: Object.keys(byDate),
+      datasets: [{
+        label: "Birr",
+        data: Object.values(byDate),
+        backgroundColor: "#22c55e"
+      }]
+    }
+  });
+
+  // PIE
+  if (pieChart) pieChart.destroy();
+
+  pieChart = new Chart(document.getElementById("pieChart"), {
+    type: "pie",
+    data: {
+      labels: Object.keys(byCategory),
+      datasets: [{
+        data: Object.values(byCategory),
+        backgroundColor: ["#ef4444","#3b82f6","#facc15","#10b981"]
+      }]
+    }
+  });
+}
+
+// ---------- RENDER ----------
+function render() {
+
+  let list = document.getElementById("history");
+  list.innerHTML = "";
+
+  let total = 0;
+  let now = new Date();
+
+  let filtered = expenses.filter(e => {
+    let d = new Date(e.date);
+
+    if (currentFilter === "today")
+      return d.toDateString() === now.toDateString();
+
+    if (currentFilter === "week")
+      return (now - d) / (1000*60*60*24) <= 7;
+
+    return true;
+  });
+
+  filtered.forEach(e => {
+    let index = expenses.indexOf(e);
+    total += e.amount;
+
+    let li = document.createElement("li");
+    li.innerHTML = `
+      ${e.category} - ${e.amount} birr
+      <span>
+        <button onclick="editExpense(${index})">✏️</button>
+        <button onclick="deleteExpense(${index})">❌</button>
+      </span>
+    `;
+
+    list.appendChild(li);
+  });
+
+  document.getElementById("total").innerText = total + " birr";
+
+  drawCharts(filtered);
+}
+
+</script>
+
+</body>
+</html>
